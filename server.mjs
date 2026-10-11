@@ -1,3 +1,4 @@
+import {candidateOrigin,selectMainline,excludeMainline} from './mainline.mjs';
 import {makeSummary,compactContext,summaryPrompt} from './summary.mjs';
 import {catalog,connections,saveConnection,requestText} from './connections.mjs';
 import {readdir} from 'node:fs/promises';
@@ -83,13 +84,20 @@ async function api(route,p){
   }else{state.root=null;if(state.mode==='full')state.rules=[];}
   await persist();return state;
  }
+ if(route==='/api/mainline'){
+  if(generating)throw Error('请等待当前回答完成');
+  if(p.action==='select')selectMainline(state,p.id);else if(p.action==='exclude')excludeMainline(state,p.id);else throw Error('未知主线操作');
+  await persist();return state;
+ }
  if(route==='/api/preview'){
   const question=String(p.question??'').trim();if(!question)throw new Error('请输入问题');
   const mode=p.mode;if(!['main','branch','combine'].includes(mode))throw new Error('未知提问方式');
-  const ids=mode==='main'?(state.mainHead?[state.mainHead]:[]):p.ids??[];
+  const replacement=p.replaceId?candidateOrigin(state,p.replaceId):null;
+  if(replacement&&mode!=='main')throw Error('候选回答必须属于主线');
+  const ids=replacement?replacement.parents:mode==='main'?(state.mainHead?[state.mainHead]:[]):p.ids??[];
   if(ids.some(id=>['drafting','reviewing','review_failed','generation_failed'].includes(state.nodes.find(n=>n.id===id)?.status)))throw Error('所选路径尚无最终答案，请先完成生成和审校');
   if(mode!=='main'&&!ids.length)throw new Error('请先选择节点');
-  const context=contextFor(state,ids,mode==='main'?'continue':mode);
+  const context=replacement?replacement.context:contextFor(state,ids,mode==='main'?'continue':mode);
   const baseRules=await readRules(state.root,state.mode,state.custom);
   const rulesChanged=state.mode==='full'&&JSON.stringify(baseRules)!==JSON.stringify(state.rules);
   if(mode!=='branch'){context.rules=structuredClone(state.rules.length||state.mode==='full'?state.rules:baseRules);context.ruleMode=state.mode;if(state.mode!=='full')context.scopedRules=[];}
@@ -107,7 +115,8 @@ async function api(route,p){
   else{node.x=parents.length?Math.max(...parents.map(n=>n.x))+440:60;node.y=parents[0]?.y??60;if(mode!=='main')node.y+=340;}
   while(state.nodes.some(n=>Math.abs(n.x-node.x)<350&&Math.abs(n.y-node.y)<270)){if(p.direction==='vertical')node.x+=420;else node.y+=340;}
   node.requestContext=compactContext({...context,turns:context.turns.filter(t=>['complete','imported'].includes(state.nodes.find(x=>x.id===t.id)?.status))},{...state.summarySettings,records:state.summaries||[]});
-  state.nodes.push(node);if(mode==='main')state.mainHead=node.id;await persist();return {state,nodeId:node.id};
+  if(replacement)node.replacementOf=replacement.replacementOf;
+  state.nodes.push(node);if(mode==='main'&&!replacement)state.mainHead=node.id;await persist();return {state,nodeId:node.id};
  }
  if(route==='/api/generate'){
   const n=state.nodes.find(n=>n.id===p.id);if(!n)throw Error('节点不存在');
@@ -158,10 +167,11 @@ const server=http.createServer(async(req,res)=>{
    const result=queue.then(()=>api(url.pathname,payload));queue=result.catch(()=>{});
    return json(res,200,await result);
   }
-  const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/layout.css':'layout.css','/geometry.mjs':'geometry.mjs','/markdown.mjs':'markdown.mjs','/tab-ui.css':'tab-ui.css'};const file=files[url.pathname];
+  const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/layout.css':'layout.css','/typography.mjs':'typography.mjs','/geometry.mjs':'geometry.mjs','/markdown.mjs':'markdown.mjs','/tab-ui.css':'tab-ui.css'};const file=files[url.pathname];
   if(!file){res.writeHead(404);return res.end();}
   res.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html; charset=utf-8':(file.endsWith('.js')||file.endsWith('.mjs'))?'text/javascript; charset=utf-8':'text/css; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
   res.end(await readFile(path.join(here,'public',file)));
  }catch(e){json(res,400,{error:e.message});}
 });
-server.listen(port,'127.0.0.1',async()=>{origin=`http://127.0.0.1:${server.address().port}`;const url=`${origin}/#${token}`;if(process.env.CANVAS_RUNTIME_FILE)await saveState(process.env.CANVAS_RUNTIME_FILE,{version:5,canvasId:process.env.CANVAS_ID,url,threadId:process.env.CANVAS_THREAD_ID,pid:process.pid});console.log(url);});
+server.listen(port,'127.0.0.1',async()=>{origin=`http://127.0.0.1:${server.address().port}`;const url=`${origin}/#${token}`;if(process.env.CANVAS_RUNTIME_FILE)await saveState(process.env.CANVAS_RUNTIME_FILE,{version:6,canvasId:process.env.CANVAS_ID,url,threadId:process.env.CANVAS_THREAD_ID,pid:process.pid});console.log(url);});
+

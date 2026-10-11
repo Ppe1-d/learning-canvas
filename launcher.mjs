@@ -12,7 +12,7 @@ export function openThread(id,{sync=!id.startsWith('local-')}={}){
 }
 async function prepare(id,sync){
  const runtime=path.join(dataDir,'threads',id+'.runtime.json'),db=path.join(dataDir,'threads',id+'.json');
- async function healthy(info){if(info?.version!==5||info.canvasId!==id)return false;try{const u=new URL(info.url);if(u.hostname!=='127.0.0.1')return false;return (await fetch(u.origin+'/api/state',{headers:{'x-canvas-token':u.hash.slice(1)},signal:AbortSignal.timeout(1500)})).ok;}catch{return false;}}
+ async function healthy(info){if(info?.version!==6||info.canvasId!==id)return false;try{const u=new URL(info.url);if(u.hostname!=='127.0.0.1')return false;return (await fetch(u.origin+'/api/state',{headers:{'x-canvas-token':u.hash.slice(1)},signal:AbortSignal.timeout(1500)})).ok;}catch{return false;}}
  let info=await loadState(runtime);
  if(!await healthy(info)){
   const child=spawn(process.execPath,[path.join(here,'server.mjs')],{cwd:here,windowsHide:true,detached:true,stdio:'ignore',env:{...process.env,CANVAS_PORT:'0',CANVAS_ID:id,CANVAS_STATE_FILE:db,CANVAS_THREAD_ID:id.startsWith('local-')?'':id,CANVAS_RUNTIME_FILE:runtime}});
@@ -30,3 +30,4 @@ export async function openBrowser(url){
  const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-Command','Start-Process -FilePath $env:CANVAS_OPEN_URL'],{windowsHide:true,stdio:'ignore',env:{...process.env,CANVAS_OPEN_URL:url}});
  await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error('默认浏览器未能打开')));});
 }
+

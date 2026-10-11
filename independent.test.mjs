@@ -6,6 +6,7 @@ test('standalone without Codex: configure API, two stages, final-only context an
  let extraPid;
  try{const url=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('startup timeout')),5000);createInterface({input:child.stdout}).once('line',s=>{clearTimeout(timer);resolve(new URL(s));});child.once('error',reject);});
  const api=async(route,body)=>{const r=await fetch(url.origin+'/api/'+route,{method:body===undefined?'GET':'POST',headers:{'x-canvas-token':url.hash.slice(1),'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();assert.equal(r.status,200,JSON.stringify(data));return data;};
+ const fontModule=await fetch(url.origin+'/typography.mjs');assert.equal(fontModule.status,200);assert.match(await fontModule.text(),/resolveTypography/);
  assert.deepEqual((await api('generation-settings')).models,[]);
  await api('connections',{name:'Mock API',model:'test',baseUrl:'http://127.0.0.1:'+provider.address().port+'/v1',apiKey:'secret',reasoning:'none'});
  assert.ok(!JSON.stringify(await api('connections')).includes('secret'));
@@ -30,7 +31,19 @@ test('standalone without Codex: configure API, two stages, final-only context an
  await api('generate',{id:compact.nodeId,answerMode:'direct'});
  for(let i=0;i<100;i++){state=await api('state');if(state.nodes.at(-1).status==='complete')break;await new Promise(r=>setTimeout(r,20));}
  assert.equal(calls.length,6);const sent=JSON.parse(calls.at(-1).messages[0].content.split('输入：')[1]);assert.equal(sent.context.turns.length,1);assert.equal(sent.context.summary.text,'Edited progress and conclusions');
+ // A replacement is generated beside the current path, and only an explicit selection changes it.
+ const previousHead=state.mainHead;
+ const candidate=await api('preview',{question:'better answer',mode:'main',replaceId:previousHead});
+ assert.equal(candidate.state.mainHead,previousHead);assert.ok(!candidate.state.nodes.at(-1).requestContext.turns.some(t=>t.id===previousHead));
+ await api('generate',{id:candidate.nodeId,answerMode:'direct'});
+ for(let i=0;i<100;i++){state=await api('state');if(state.nodes.at(-1).status==='complete')break;await new Promise(r=>setTimeout(r,20));}
+ assert.equal(state.mainHead,previousHead);
+ state=await api('mainline',{action:'select',id:candidate.nodeId});assert.equal(state.mainHead,candidate.nodeId);
+ const after=await api('preview',{question:'continue selected answer',mode:'main'});
+ assert.ok(after.state.nodes.at(-1).context.turns.some(t=>t.id===candidate.nodeId));assert.ok(!after.state.nodes.at(-1).context.turns.some(t=>t.id===previousHead));
+ state=await api('mainline',{action:'exclude',id:candidate.nodeId});assert.equal(state.mainHead,candidate.state.nodes.at(-1).parents[0]);assert.ok(state.nodes.some(n=>n.id===previousHead));
  const course=await api('new-course',{title:'Independent'});assert.ok(course.threadId.startsWith('local-'));const fs=await import('node:fs/promises');extraPid=JSON.parse(await fs.readFile(path.join(dir,'threads',course.threadId+'.runtime.json'),'utf8')).pid;
  const other=new URL(course.url);const fresh=await (await fetch(other.origin+'/api/state',{headers:{'x-canvas-token':other.hash.slice(1)}})).json();assert.equal(fresh.title,'Independent');assert.equal(fresh.nodes.length,0);assert.equal(fresh.useCodex,false);
  }finally{if(extraPid)process.kill(extraPid);const exit=new Promise(r=>child.once('exit',r));child.kill();await exit;await new Promise(r=>provider.close(r));await rm(dir,{recursive:true,force:true});}
 });
+

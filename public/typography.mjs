@@ -1,0 +1,4 @@
+export const regions={body:['回答正文',16],h1:['一级标题',28],h2:['二级标题 / 阅读标题',24],h3:['三级标题',21],h4:['四级标题',19],h5:['五级标题',17],h6:['六级标题',16],code:['代码',14],cardTitle:['节点标题',16],cardSummary:['节点摘要',14],input:['输入框',16],ui:['菜单、按钮与标签',12]};
+export function migrateTypography(old={}){if(old.global)return structuredClone(old);const fonts={system:'system-ui, sans-serif',sans:'"Microsoft YaHei", sans-serif',serif:'"SimSun", serif'};return {global:{font:fonts[old.font]||fonts.system,size:old.size||16,line:old.line||1.8,weight:400},overrides:old.card?{cardSummary:{font:fonts[old.font]||fonts.system,size:old.card,line:old.line||1.8,weight:400}}:{}};}
+export function resolveTypography(p,key){if(p.overrides[key])return {...p.overrides[key]};return {...p.global,size:Math.round(regions[key][1]*p.global.size/16*10)/10,...(key==='code'?{font:'Consolas, monospace'}:{}),...(/^h[1-6]$/.test(key)?{weight:600}:{})};}
+

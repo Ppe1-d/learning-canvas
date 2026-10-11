@@ -17,6 +17,7 @@ export function importThread(state,thread){
   state.nodes.push({id,question,answer,kind:'main',parents,context,directFiles:[],status:'imported',sourceTurnId:turn.id,x,y});
   previous=id;added++;
  }
- if(previous&&(!state.mainHead||state.mainHead===state.importHead))state.mainHead=previous;
+ if(previous&&!state.mainSelection&&(!state.mainHead||state.mainHead===state.importHead))state.mainHead=previous;
  state.importHead=previous;return {state,added};
 }
+

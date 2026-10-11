@@ -1,3 +1,4 @@
+import {regions,migrateTypography,resolveTypography} from './typography.mjs';
 import {markdown} from './markdown.mjs';
 import {W,H,isVisible,buildRoutes,arrange} from './geometry.mjs';
 const $=selector=>document.querySelector(selector);
@@ -6,6 +7,7 @@ history.replaceState(null,'',location.pathname);
 if(token){const response=await fetch('/api/session',{method:'POST',headers:{'x-canvas-token':token}});if(response.ok)sessionStorage.removeItem('canvas-token');}
 window.addEventListener('hashchange',()=>location.reload());
 let state,selected=new Set(),active=null,tab='answer',mode='main',zoom=1,pan={x:0,y:0},busy=false;
+let replacementId=null;
 let modelData=null,routeCache={key:'',routes:[]};
 let direction=localStorage.getItem('canvas-direction')||'horizontal',undoLayout=null;
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
@@ -16,8 +18,8 @@ function nodeTitle(n){const marker='## My request:';return n.status==='imported'
 function labels(){
  $('#course-title').textContent=state.title;updateModelLabels();
  $('#source-status').textContent=state.root?'资料已绑定':'未绑定资料';$('#source-status').title=(state.root||'在课程与资料中绑定本地文件夹')+' · '+({off:'目录规则关闭',full:'完整目录规则',custom:'课程精简规则'}[state.mode]);
- $('#target-label').textContent=mode==='main'?'主线':mode==='combine'?`关联 ${selected.size} 个节点`:`分支 · 节点 ${String(state.nodes.findIndex(n=>n.id===active)+1).padStart(2,'0')}`;
- $('#selection-count').textContent=selected.size>1&&mode!=='combine'?`已选 ${selected.size} 个节点`:'';$('.target').hidden=false;$('#question').placeholder=mode==='main'?'在主线上提问，或继续当前主题…':mode==='combine'?`结合已选的 ${selected.size} 个节点提问…`:`从节点 ${state.nodes.findIndex(n=>n.id===active)+1} 开始分支提问…`;
+ $('#target-label').textContent=replacementId?'主线候选（未切换）':mode==='main'?'主线':mode==='combine'?`关联 ${selected.size} 个节点`:`分支 · 节点 ${String(state.nodes.findIndex(n=>n.id===active)+1).padStart(2,'0')}`;
+ $('#selection-count').textContent=selected.size>1&&mode!=='combine'?`已选 ${selected.size} 个节点`:'';$('.target').hidden=false;$('#question').placeholder=replacementId?'修改问题后生成候选，完成后再选择主线…':mode==='main'?'在主线上提问，或继续当前主题…':mode==='combine'?`结合已选的 ${selected.size} 个节点提问…`:`从节点 ${state.nodes.findIndex(n=>n.id===active)+1} 开始分支提问…`;
  const pending=state.nodes.some(n=>['drafting','reviewing'].includes(n.status));const unfinished=state.nodes.some(n=>selected.has(n.id)&&['drafting','reviewing','review_failed','generation_failed'].includes(n.status));$('#branch').disabled=!active||unfinished;$('#combine').disabled=selected.size<2||unfinished;$('#bring-back').disabled=!active||unfinished;$('#send').disabled=busy||pending;
 }
 function drawEdges(){
@@ -38,7 +40,7 @@ function renderNodes(){
  state.nodes.forEach((n,i)=>{
   if(!isVisible(n,pan,zoom,$('#canvas').clientWidth,$('#canvas').clientHeight))return;
   const card=el('article','node'+(n.kind!=='main'?' branch-node':'')+(selected.has(n.id)?' selected':''));card.classList.add(direction);if(zoom<.48)card.classList.add('compact');card.style.left=n.x+'px';card.style.top=n.y+'px';card.dataset.id=n.id;card.tabIndex=0;card.setAttribute('aria-label',nodeTitle(n));
-  const head=el('div','node-head');head.append(el('span','',`${String(i+1).padStart(2,'0')}  /  ${n.kind==='main'?'学习主线':n.kind==='combine'?'关联提问':'追问分支'}`));const check=el('input');check.type='checkbox';check.checked=selected.has(n.id);check.setAttribute('aria-label','选择节点 '+nodeTitle(n));check.addEventListener('click',e=>{e.stopPropagation();select(n.id,true);});head.append(check);
+  const head=el('div','node-head');head.append(el('span','',`${String(i+1).padStart(2,'0')}  /  ${n.kind==='main'?(mainIds().has(n.id)?'当前主线':'主线候选 / 历史路径'):n.kind==='combine'?'关联提问':'追问分支'}`));const check=el('input');check.type='checkbox';check.checked=selected.has(n.id);check.setAttribute('aria-label','选择节点 '+nodeTitle(n));check.addEventListener('click',e=>{e.stopPropagation();select(n.id,true);});head.append(check);
   card.append(head,el('h3','',nodeTitle(n)),el('p','node-excerpt',(n.answer||statusText(n.status)).replace(/[*#`]/g,'')));const foot=el('div','node-foot');foot.title=statusText(n.status);foot.append(el('span','',n.directFiles.length?`${n.directFiles.length} 份资料`:''),el('span','',['drafting','reviewing','review_failed','generation_failed','preview'].includes(n.status)?statusText(n.status):''));card.append(foot);
   card.addEventListener('click',e=>{if(card.dataset.dragged==='yes'){card.dataset.dragged='no';return;}select(n.id,e.ctrlKey||e.metaKey||e.shiftKey);});card.addEventListener('keydown',e=>{if(e.key==='Enter')select(n.id,e.ctrlKey);});
   card.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('input,button,a,select,textarea'))return;e.stopPropagation();const start={x:e.clientX,y:e.clientY,nx:n.x,ny:n.y};card.setPointerCapture(e.pointerId);let moved=false;
@@ -54,7 +56,7 @@ function renderReader(){
  const n=state.nodes.find(n=>n.id===active);if(!n)return;
  $('#reader-title').textContent=nodeTitle(n);$('#node-type').textContent=n.kind==='main'?'主线节点':'独立分支';$('#file-count').textContent=n.context.files.length;
  document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===tab));const content=$('#reader-content');content.replaceChildren();
- if(tab==='answer'){content.append(el('span','preview-label',n.status==='complete'&&n.reviewed===false?'最终稿 · 未启用审校':statusText(n.status)));addText(content,n.answer||'尚无最终答案。草稿不进入后续上下文。');if(n.notice)content.append(el('div','info-box',n.notice));}
+ if(tab==='answer'){if(n.kind==='main')renderMainActions(content,n);content.append(el('span','preview-label',n.status==='complete'&&n.reviewed===false?'最终稿 · 未启用审校':statusText(n.status)));addText(content,n.answer||'尚无最终答案。草稿不进入后续上下文。');if(n.notice)content.append(el('div','info-box',n.notice));}
  if(tab==='review'){if(n.generation){for(const [stage,title] of [['draft','生成配置'],['review','审校配置']]){if(stage==='review'&&n.generation.reviewEnabled===false)continue;const g=n.generation[stage],d=el('details','stage-record');d.append(el('summary','',`${title} · ${g.model} / ${effortLabel(g.effort)}`),el('pre','',g.prompt));content.append(d);}}else content.append(el('div','info-box',n.status==='imported'?'此回答导入自原聊天，未经过画布的两阶段审校。':'此节点尚无模型配置记录；旧版历史节点未记录的配置不会补写。')); content.append(el('div','info-box',n.status==='complete'?(n.reviewed===false?'直接回答，未启用审校。后续引用此回答。':'已完成生成和独立审校。后续只引用最终稿；审校不能保证没有错误。'):statusText(n.status)));if(n.draft){const d=el('details');d.append(el('summary','','查看第一阶段草稿'),el('pre','',n.draft));content.append(d);}if(n.reviewError)content.append(el('p','',n.reviewError));if(['preview','review_failed','generation_failed'].includes(n.status)){const retry=el('button','',n.status==='review_failed'?'重试审校':n.status==='preview'?'生成并审校':'重试生成');retry.onclick=()=>runReview(n.id);content.append(retry);}}
  if(tab==='context'){
   const input=n.requestContext||n.context;if(input.summary){content.append(el('h3','','本次使用的历史摘要'),el('div','info-box',`覆盖 ${input.summary.coveredIds.length} 轮；其余 ${input.turns.length} 轮完整发送`));addText(content,input.summary.text);}
@@ -76,10 +78,10 @@ $('#settings-form').onsubmit=async e=>{e.preventDefault();try{state=await api('s
 $('#bind').onclick=async()=>{try{state=await api('bind',{root:$('#root-input').value});$('#bound-root').textContent=state.root;labels();toast('已绑定，可在此范围内自动按需读取。');}catch(e){$('#settings-error').textContent=e.message;}};
 $('#unbind').onclick=async()=>{try{state=await api('bind',{root:null});$('#root-input').value='';$('#bound-root').textContent='已解除绑定；已有节点的快照仍保留。';labels();}catch(e){$('#settings-error').textContent=e.message;}};
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderReader();});
-$('#branch').onclick=()=>{mode='branch';selected=new Set([active]);renderNodes();$('#question').focus();toast('下一次提问将从此节点分叉，继承当时的规则与资料。');};
-$('#combine').onclick=()=>{mode='combine';labels();$('#question').focus();};
-$('#main-focus').onclick=()=>{mode='main';if(state.mainHead){const n=state.nodes.find(n=>n.id===state.mainHead);pan={x:40-n.x*zoom,y:20-n.y*zoom};select(n.id);}transform();labels();};
-$('#ask-form').onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;$('#send').disabled=true;try{const r=await api('preview',{direction,question:$('#question').value,mode,ids:mode==='branch'?[active]:[...selected]});state=r.state;active=r.nodeId;selected=new Set([active]);if(mode==='combine')mode='branch';$('#question').value='';tab='answer';renderNodes();renderReader();const n=state.nodes.find(n=>n.id===active);pan={x:Math.min(0,40-n.x*zoom),y:20-n.y*zoom};transform();if($('#generation-mode').value!=='preview')await runReview(active);else toast('已保存上下文预览，未调用模型。');}catch(e){toast(e.message);}finally{busy=false;$('#send').disabled=state.nodes.some(n=>['drafting','reviewing'].includes(n.status));}};
+$('#branch').onclick=()=>{replacementId=null;mode='branch';selected=new Set([active]);renderNodes();$('#question').focus();toast('下一次提问将从此节点分叉，继承当时的规则与资料。');};
+$('#combine').onclick=()=>{replacementId=null;mode='combine';labels();$('#question').focus();};
+$('#main-focus').onclick=()=>{replacementId=null;mode='main';if(state.mainHead){const n=state.nodes.find(n=>n.id===state.mainHead);pan={x:40-n.x*zoom,y:20-n.y*zoom};select(n.id);}transform();labels();};
+$('#ask-form').onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;$('#send').disabled=true;try{const r=await api('preview',{direction,question:$('#question').value,mode,replaceId:replacementId,ids:mode==='branch'?[active]:[...selected]});state=r.state;replacementId=null;active=r.nodeId;selected=new Set([active]);if(mode==='combine')mode='branch';$('#question').value='';tab='answer';renderNodes();renderReader();const n=state.nodes.find(n=>n.id===active);pan={x:Math.min(0,40-n.x*zoom),y:20-n.y*zoom};transform();if($('#generation-mode').value!=='preview')await runReview(active);else toast('已保存上下文预览，未调用模型。');}catch(e){toast(e.message);}finally{busy=false;$('#send').disabled=state.nodes.some(n=>['drafting','reviewing'].includes(n.status));}};
 $('#question').onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))$('#ask-form').requestSubmit();};
 document.querySelectorAll('[data-question]').forEach(b=>b.onclick=()=>{$('#question').value=b.dataset.question;$('#question').focus();});
 $('#bring-back').onclick=()=>{$('#note-text').value='';$('#note-dialog').showModal();};$('#note-close').onclick=()=>$('#note-dialog').close();
@@ -193,15 +195,15 @@ document.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{setAnswerMo
 $('#answer-menu').onkeydown=e=>{const items=[...document.querySelectorAll('[data-answer]')],i=items.indexOf(document.activeElement);if(e.key==='Escape'){e.preventDefault();closeAnswerMenu(true);}if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();items[e.key==='Home'?0:e.key==='End'?items.length-1:(i+(e.key==='ArrowDown'?1:-1)+items.length)%items.length].focus();}if(e.key==='Tab')closeAnswerMenu();};
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.answer-picker'))closeAnswerMenu();});
 setAnswerMode(['preview','direct','review'].includes(localStorage.getItem('canvas-answer-mode'))?localStorage.getItem('canvas-answer-mode'):'preview');
-$('#target-label').onclick=()=>{mode='main';labels();$('#question').focus();};
+$('#target-label').onclick=()=>{replacementId=null;mode='main';labels();$('#question').focus();};
 function toggleReviewFields(){for(const id of ['review-model','review-effort','review-prompt'])$('#'+id).disabled=!$('#review-enabled').checked;}
 $('#review-enabled').onchange=toggleReviewFields;
 
-const readingDefaults={font:'system',size:16,line:1.8,card:14};
-let reading={...readingDefaults};try{reading={...reading,...JSON.parse(localStorage.getItem('canvas-reading')||'{}')};}catch{}
-function applyReading(){const fonts={system:'system-ui, sans-serif',sans:'"Microsoft YaHei", sans-serif',serif:'"SimSun", serif'},root=document.documentElement.style;root.setProperty('--reading-font',fonts[reading.font]||fonts.system);root.setProperty('--reading-size',reading.size+'px');root.setProperty('--reading-line',reading.line);root.setProperty('--card-size',reading.card+'px');for(const k of ['size','line','card']){$('#reading-'+k).value=reading[k];$('#reading-'+k+'-value').textContent=reading[k]+(k==='line'?'':' px');}$('#reading-font').value=reading.font;localStorage.setItem('canvas-reading',JSON.stringify(reading));}
-for(const k of ['font','size','line','card'])$('#reading-'+k).oninput=e=>{reading[k]=k==='font'?e.target.value:Number(e.target.value);applyReading();};
-$('#reading-open').onclick=()=>$('#reading-dialog').showModal();$('#reading-close').onclick=()=>$('#reading-dialog').close();$('#reading-reset').onclick=()=>{reading={...readingDefaults};applyReading();};applyReading();
+let typography=migrateTypography();try{typography=migrateTypography(JSON.parse(localStorage.getItem('canvas-typography')||localStorage.getItem('canvas-reading')||'{}'));}catch{}
+function applyTypography(){const root=document.documentElement.style;for(const key of Object.keys(regions)){const v=resolveTypography(typography,key);for(const prop of ['font','size','line','weight'])root.setProperty('--type-'+key+'-'+prop,v[prop]+(prop==='size'?'px':''));}localStorage.setItem('canvas-typography',JSON.stringify(typography));}
+function renderTypography(){const host=$('#typography-fields');host.replaceChildren();for(const [key,title] of [['global','全局设置'],...Object.entries(regions).map(([k,v])=>[k,v[0]])]){const group=el('fieldset','font-region');group.append(el('legend','',title));const inherited=key!=='global'&&!typography.overrides[key];if(key!=='global'){const label=el('label','font-inherit'),box=el('input');box.type='checkbox';box.checked=inherited;box.onchange=()=>{if(box.checked)delete typography.overrides[key];else typography.overrides[key]=resolveTypography(typography,key);applyTypography();renderTypography();};label.append(box,document.createTextNode(' 跟随全局'));group.append(label);}
+ const values=key==='global'?typography.global:resolveTypography(typography,key);const fields=el('div','font-fields');for(const [prop,name] of [['font','字体'],['size','字号'],['line','行距'],['weight','字重']]){const label=el('label','',name),input=el('input');input.setAttribute('aria-label',title+' '+name);input.disabled=inherited;if(prop==='font'){input.type='text';input.setAttribute('list','font-options');}else{input.type='number';input.min=prop==='size'?8:prop==='line'?1:100;input.max=prop==='size'?48:prop==='line'?3:900;input.step=prop==='weight'?100:prop==='line'?.1:1;}input.value=values[prop];input.oninput=()=>{if(!input.checkValidity()||!input.value.trim())return;const target=key==='global'?typography.global:typography.overrides[key];target[prop]=prop==='font'?input.value:Number(input.value);applyTypography();if(key==='global')for(const [region,meta] of Object.entries(regions)){if(typography.overrides[region])continue;const resolved=resolveTypography(typography,region);for(const [property,label] of [['font','字体'],['size','字号'],['line','行距'],['weight','字重']])host.querySelector('[aria-label="'+meta[0]+' '+label+'"]').value=resolved[property];}};label.append(input);fields.append(label);}group.append(fields);host.append(group);}}
+$('#reading-open').onclick=()=>{renderTypography();$('#reading-dialog').showModal();};$('#reading-close').onclick=()=>$('#reading-dialog').close();$('#reading-reset').onclick=()=>{typography=migrateTypography();applyTypography();renderTypography();};applyTypography();
 
 let summaryPath=null,summaryRecord=null,summaryWorking=false;
 function summaryMessage(message){$('#summary-status').textContent=message;}
@@ -211,3 +213,22 @@ $('#summary-close').onclick=()=>$('#summary-dialog').close();
 $('#summary-settings-save').onclick=async()=>{if(summaryWorking)return;try{state=await api('summary-settings',{enabled:$('#summary-enabled').checked,keepRecent:Number($('#summary-keep').value)});await loadSummary();}catch(e){summaryMessage(e.message);}};
 $('#summary-generate').onclick=async()=>{if(summaryWorking)return;summaryWorking=true;$('#summary-generate').disabled=true;$('#summary-apply').disabled=true;$('#summary-settings-save').disabled=true;summaryMessage('正在生成摘要预览，原摘要仍保留…');try{const record=await api('summary-generate',summaryPath);summaryRecord=record;$('#summary-text').value=record.text;summaryMessage(`预览覆盖较早 ${record.coveredIds.length} 轮。可编辑，点击“确认应用摘要”后生效。`);}catch(e){summaryMessage('生成失败，继续使用原有上下文：'+e.message);}finally{summaryWorking=false;$('#summary-generate').disabled=false;$('#summary-settings-save').disabled=false;$('#summary-apply').disabled=!summaryRecord;}};
 $('#summary-apply').onclick=async()=>{if(!summaryRecord||summaryWorking)return;try{state=await api('summary-save',{id:summaryRecord.id,text:$('#summary-text').value});summaryMessage('摘要已保存；仅影响后续请求，原始问答与历史节点保持不变。');}catch(e){summaryMessage(e.message);}};
+
+// The selected mainline is a saved endpoint, not whichever card is being read.
+function mainIds(){const h=state.nodes.find(n=>n.id===state.mainHead);return new Set(h?[...h.context.turns.map(t=>t.id),h.id]:[]);}
+async function changeMainline(action,id){try{state=await api('mainline',{action,id});replacementId=null;mode='main';renderNodes();renderReader();toast(action==='exclude'?'已从上一轮继续，原回答和后续路径仍保留。':'已切换主线；后续只引用这条路径。');}catch(e){toast(e.message);}}
+function prepareCandidate(n,edit){replacementId=n.id;mode='main';$('#question').value=n.question;labels();$('#question').focus();if(!edit)$('#ask-form').requestSubmit();else toast('修改问题后发送，新答案完成后再选择主线。');}
+function renderMainActions(host,n){
+ const bar=el('div','mainline-actions'),pending=state.nodes.some(x=>['drafting','reviewing'].includes(x.status));
+ const add=(text,fn,disabled=false)=>{const b=el('button','',text);b.disabled=pending||disabled;b.onclick=fn;bar.append(b);};
+ add('重新回答',()=>prepareCandidate(n,false));add('修改问题另开主线',()=>prepareCandidate(n,true));
+ add('选为主线',()=>changeMainline('select',n.id),!['complete','imported'].includes(n.status)||n.id===state.mainHead);
+ add('排除此回答',()=>changeMainline('exclude',n.id),!mainIds().has(n.id));
+ add('对比 / 切换路径',()=>showMainPaths(n));host.append(bar);
+ host.append(el('p','path-status',n.id===state.mainHead?'当前主线终点':mainIds().has(n.id)?'当前主线中的历史回答':'未选入当前主线，不会自动进入后续上下文'));
+}
+function showMainPaths(node){const host=$('#path-list');host.replaceChildren();let nodes=state.nodes.filter(n=>n.kind==='main');if(!node){const parents=new Set(nodes.flatMap(n=>n.parents));const saved=new Set([state.mainHead,...(state.mainPaths||[])]);nodes=nodes.filter(n=>!parents.has(n.id)||saved.has(n.id));}if(node){const origin=node.replacementOf||node.id;nodes=nodes.filter(n=>n.id===origin||n.replacementOf===origin||n.id===node.id);if(nodes.length===1&&node.replacementOf)nodes=state.nodes.filter(n=>[node.id,node.replacementOf].includes(n.id));}
+ for(const n of nodes){const section=el('section','path-option');section.append(el('h3','',n.question),el('p','path-status',(n.id===state.mainHead?'当前主线终点 · ':'')+(n.status==='complete'&&n.reviewed===false?'最终稿 · 未启用审校':statusText(n.status))));addText(section,n.answer||'尚未完成');const b=el('button','','选为主线');b.disabled=!['complete','imported'].includes(n.status)||n.id===state.mainHead;b.onclick=async()=>{await changeMainline('select',n.id);$('#paths-dialog').close();select(n.id);};section.append(b);host.append(section);}
+ if(!nodes.length)host.append(el('p','','尚无主线回答。'));$('#paths-dialog').showModal();}
+$('#paths-open').onclick=()=>showMainPaths();$('#paths-close').onclick=()=>$('#paths-dialog').close();
+

@@ -44,3 +44,25 @@ dialog,.stage-settings{background:#222;color:#ddd;border-color:#3a3a3a}textarea,
 
 #reading-dialog input[type=range]{accent-color:#bbb}
 .node .excerpt{touch-action:none}
+
+/* Per-region typography wins over older compact-layout sizes. */
+body,button,input,select,textarea,label,summary,small,.info-box,.preview-label,.path-status,.node-head,.node-foot,#target-label,#answer-picker,.model-shortcuts button,#source-status,#summary-status,.tabs button,.reader-actions button,header #course-title,dialog p,dialog label{font-family:var(--type-ui-font);font-size:var(--type-ui-size);line-height:var(--type-ui-line);font-weight:var(--type-ui-weight)}
+.markdown,#reader-content>p,#reader-content>pre,.reading-sample{font-family:var(--type-body-font);font-size:var(--type-body-size);line-height:var(--type-body-line);font-weight:var(--type-body-weight)}
+.markdown p,.markdown li,.markdown table{font:inherit}
+.node h3{font-family:var(--type-cardTitle-font);font-size:var(--type-cardTitle-size);line-height:var(--type-cardTitle-line);font-weight:var(--type-cardTitle-weight)}
+.node .node-excerpt{font-family:var(--type-cardSummary-font);font-size:var(--type-cardSummary-size);line-height:var(--type-cardSummary-line);font-weight:var(--type-cardSummary-weight);touch-action:none}
+#question{font-family:var(--type-input-font);font-size:var(--type-input-size);line-height:var(--type-input-line);font-weight:var(--type-input-weight)}
+.markdown pre,.markdown code{font-family:var(--type-code-font);font-size:var(--type-code-size);line-height:var(--type-code-line);font-weight:var(--type-code-weight)}
+#reading-dialog{width:min(760px,94vw)}.font-region{border:1px solid #444;border-radius:10px;margin:14px 0;padding:12px}.font-fields{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px}.font-fields input{min-width:0;width:100%}.font-inherit{display:flex;gap:6px;align-items:center;margin:4px 0 12px}.font-region input:disabled{opacity:.5}
+.mainline-actions{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.mainline-actions button{padding:6px 9px}.path-status{color:#aaa}#paths-dialog{width:min(1100px,94vw)}#path-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:16px}.path-option{border:1px solid #444;border-radius:12px;padding:16px;min-width:0}.path-option .markdown{max-height:45vh;overflow:auto}.reader-actions{flex-wrap:wrap}
+@media(max-width:540px){.font-fields{grid-template-columns:1fr 1fr}}
+.markdown h1{font-family:var(--type-h1-font);font-size:var(--type-h1-size);line-height:var(--type-h1-line);font-weight:var(--type-h1-weight);}
+.markdown h2,#reader-title{font-family:var(--type-h2-font);font-size:var(--type-h2-size);line-height:var(--type-h2-line);font-weight:var(--type-h2-weight);}
+.markdown h3{font-family:var(--type-h3-font);font-size:var(--type-h3-size);line-height:var(--type-h3-line);font-weight:var(--type-h3-weight);}
+.markdown h4{font-family:var(--type-h4-font);font-size:var(--type-h4-size);line-height:var(--type-h4-line);font-weight:var(--type-h4-weight);}
+.markdown h5{font-family:var(--type-h5-font);font-size:var(--type-h5-size);line-height:var(--type-h5-line);font-weight:var(--type-h5-weight);}
+.markdown h6{font-family:var(--type-h6-font);font-size:var(--type-h6-size);line-height:var(--type-h6-line);font-weight:var(--type-h6-weight);}
+
+.dialog-title h2,#empty h2{font-family:var(--type-h2-font);font-size:var(--type-h2-size);line-height:var(--type-h2-line);font-weight:var(--type-h2-weight)}
+.path-option h3,.setting-section h3{font-family:var(--type-h3-font);font-size:var(--type-h3-size);line-height:var(--type-h3-line);font-weight:var(--type-h3-weight)}
+
