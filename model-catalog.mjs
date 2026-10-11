@@ -1,3 +1,4 @@
+import {resolveCodex,codexStartError} from './codex-binary.mjs';
 import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 let cached=null,inflight=null;
@@ -5,7 +6,7 @@ export function listModels(refresh=false){
  if(cached&&!refresh&&Date.now()-cached.at<300000)return Promise.resolve(cached.data);
  if(inflight)return inflight;
  inflight=new Promise((resolve,reject)=>{
-  const child=spawn(process.env.CANVAS_CODEX_BIN||'codex',['app-server','--stdio'],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+  const child=spawn(resolveCodex(),['app-server','--stdio'],{windowsHide:true,stdio:['pipe','pipe','pipe']});
   let done=false,requestId=1;const models=[];
   const finish=(err)=>{if(done)return;done=true;clearTimeout(timer);child.kill();if(err)reject(err);else{cached={at:Date.now(),data:models};resolve(models);}};
   const timer=setTimeout(()=>finish(Error('读取 Codex 模型列表超时，请重试')),30000);

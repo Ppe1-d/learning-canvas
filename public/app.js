@@ -148,7 +148,7 @@ async function showThreads(more=false){
  try{const result=await api($('#library-source').value+'?search='+encodeURIComponent($('#thread-search').value)+(more&&threadCursor?'&cursor='+encodeURIComponent(threadCursor):''));if(request!==threadRequest)return;
  if(!more)$('#thread-list').replaceChildren();threadCursor=result.nextCursor;$('#thread-more').hidden=!threadCursor;
  for(const thread of result.data.filter(t=>$('#library-source').value!=='courses'||t.name.includes($('#thread-search').value))){const button=el('button','thread-choice',thread.name||(thread.preview||'未命名聊天').slice(0,80));button.title=thread.cwd||'';button.disabled=thread.id===(state.canvasId||state.sourceThreadId);
- button.onclick=async()=>{button.disabled=true;$('#thread-message').textContent='正在打开聊天画布…';try{saveView();const result=await api('open-thread',{id:thread.id});location.assign(result.url);}catch(e){button.disabled=false;$('#thread-message').textContent=e.message;}};$('#thread-list').append(button);}
+ button.onclick=async()=>{button.disabled=true;$('#thread-message').textContent='正在打开聊天画布…';try{saveView();const result=await api('open-thread',{id:thread.id,source:$('#library-source').value});location.assign(result.url);}catch(e){button.disabled=false;$('#thread-message').textContent=e.message;}};$('#thread-list').append(button);}
  $('#thread-message').textContent=result.data.length?'':'没有找到聊天';
  }catch(e){$('#thread-message').textContent=e.message;}
 }
@@ -158,7 +158,7 @@ $('#thread-search-form').onsubmit=e=>{e.preventDefault();showThreads();};
 $('#thread-more').onclick=()=>showThreads(true);
 let syncing=false;
 setInterval(async()=>{
- if(syncing||document.hidden||!state?.sourceThreadId||busy||state.nodes.some(n=>['drafting','reviewing'].includes(n.status)))return;
+ if(syncing||document.hidden||!state?.sourceThreadId||!state.codexSync||busy||state.nodes.some(n=>['drafting','reviewing'].includes(n.status)))return;
  syncing=true;try{const result=await api('import-current-thread',{});if(result.added){state=await api('state');renderNodes();renderReader();}}catch(e){$('#thread-switch').title='同步暂未完成：'+e.message;}finally{syncing=false;}
 },15000);
 

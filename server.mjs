@@ -20,6 +20,7 @@ const dataDir=process.env.CANVAS_DATA_DIR||path.join(here,'data');
 const db=process.env.CANVAS_STATE_FILE||path.join(dataDir,'state.json');
 const defaults={title:'我的学习画布',root:null,mode:'custom',custom:'用中文讲清一个小主题。交代必要术语、条件和语法。用具体例子解释机制，避免重复总结。',rules:[],nodes:[],mainHead:null,notes:[]};
 let state=await loadState(db)??structuredClone(defaults);
+state.codexSync=false;
 state.canvasId=process.env.CANVAS_ID||state.canvasId;
 if(process.env.CANVAS_ID?.startsWith('local-'))await saveState(db,state);
 let origin=`http://127.0.0.1:${port}`;
@@ -35,9 +36,10 @@ async function api(route,p){
  if(route==='/api/codex-toggle'){state.useCodex=!!p.enabled;await persist();return {ok:true};}
  if(route==='/api/new-course'){const id='local-'+randomUUID();await saveState(path.join(dataDir,'threads',id+'.json'),{...structuredClone(defaults),title:String(p.title||'新课程').slice(0,80),useCodex:false});return openThread(id);}
 
+ if(route==='/api/sync-mode'){state.codexSync=!!p.enabled;return {ok:true};}
  if(route==='/api/open-thread'){
   if(p.id===(process.env.CANVAS_ID||process.env.CANVAS_THREAD_ID))throw Error('已经在当前聊天画布中');
-  return openThread(p.id);
+  return openThread(p.id,{sync:p.source==='threads'});
  }
  if(route==='/api/import-current-thread'){
   if(!process.env.CANVAS_THREAD_ID)throw Error('此服务未绑定聊天');
@@ -136,4 +138,4 @@ const server=http.createServer(async(req,res)=>{
   res.end(await readFile(path.join(here,'public',file)));
  }catch(e){json(res,400,{error:e.message});}
 });
-server.listen(port,'127.0.0.1',async()=>{origin=`http://127.0.0.1:${server.address().port}`;const url=`${origin}/#${token}`;if(process.env.CANVAS_RUNTIME_FILE)await saveState(process.env.CANVAS_RUNTIME_FILE,{version:3,canvasId:process.env.CANVAS_ID,url,threadId:process.env.CANVAS_THREAD_ID,pid:process.pid});console.log(url);});
+server.listen(port,'127.0.0.1',async()=>{origin=`http://127.0.0.1:${server.address().port}`;const url=`${origin}/#${token}`;if(process.env.CANVAS_RUNTIME_FILE)await saveState(process.env.CANVAS_RUNTIME_FILE,{version:4,canvasId:process.env.CANVAS_ID,url,threadId:process.env.CANVAS_THREAD_ID,pid:process.pid});console.log(url);});

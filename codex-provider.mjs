@@ -1,3 +1,4 @@
+import {resolveCodex,codexStartError} from './codex-binary.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtemp,readFile,unlink,rmdir} from 'node:fs/promises';
 import os from 'node:os';
@@ -15,7 +16,7 @@ export async function codexRequest(prompt,settings={}){
  const env={...process.env};delete env.OPENAI_API_KEY;delete env.CODEX_API_KEY;
  try{
   await new Promise((resolve,reject)=>{
-   const child=spawn(process.env.CANVAS_CODEX_BIN||'codex',args,{env,windowsHide:true,stdio:['pipe','ignore','pipe']});
+   const child=spawn(resolveCodex(),args,{env,windowsHide:true,stdio:['pipe','ignore','pipe']});
    let error='';const timer=setTimeout(()=>{child.kill();reject(Error('模型请求超过 5 分钟，请稍后重试。'));},300000);
    child.stderr.on('data',chunk=>{error=(error+chunk.toString()).slice(-3000);});
    child.on('error',e=>{clearTimeout(timer);reject(Error('无法启动 Codex CLI：'+e.message));});

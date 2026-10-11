@@ -47,3 +47,9 @@
 主要模块：`server.mjs` 本地路由与任务；`core.mjs` 课程上下文及持久化；`generation.mjs` 两阶段配置；`review.mjs` 两阶段执行；`api-provider.mjs` 文本 API；`connections.mjs` 服务配置与分发；`codex-provider.mjs` 可选 CLI；`dsh-import.mjs` DSH 导入；`launcher.mjs` 启动；`public/` 网页与画布。
 
 添加服务时优先扩展 API 适配层，保持密钥不进入网页状态、草稿不进入后续上下文的约束。
+
+## Codex 连接修复
+
+Windows 会优先使用 CANVAS_CODEX_BIN，其次查找 PATH 和桌面端本机安装目录中的 codex.exe。登录仍由官方 CLI 管理：首次使用可运行 `codex login`，并用 `codex login status` 检查。无需复制凭据到画布。
+
+“我的画布”打开已保存记录，不触发 Codex 同步；选择“Codex 聊天”并打开课程才同步原聊天。画布新增内容不写回 Codex。新增两项回归测试，当前共 26 项通过。
