@@ -29,3 +29,18 @@ dialog,.stage-settings{background:#222;color:#ddd;border-color:#3a3a3a}textarea,
 #thread-dialog{width:min(540px,90vw)}#thread-search-form{display:flex;gap:8px}#thread-search{flex:1;min-width:0}#thread-list{display:grid;gap:6px;max-height:55vh;overflow:auto}.thread-choice{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:12px}#thread-message{font-size:13px;color:var(--muted)}#thread-switch{margin-right:auto}header #course-title{flex:0 1 auto;max-width:65%}
 
 #connections-dialog{width:min(560px,92vw)}#connection-form{display:grid;gap:12px}#connection-form label{display:grid;gap:6px}#connection-form input,#connection-form select{width:100%}#connection-form input[type=checkbox]{width:auto}#connections-dialog p{font-size:13px;color:var(--muted)}#new-course-form{display:grid;gap:14px}#thread-dialog .input-row{margin-bottom:12px;flex-wrap:wrap}
+/* Reading preferences affect content, not toolbar density or canvas geometry. */
+:root{color-scheme:dark;--reading-font:system-ui,sans-serif;--reading-size:16px;--reading-line:1.8;--card-size:14px}
+.markdown,#question,.reading-sample{font-family:var(--reading-font);font-size:var(--reading-size);line-height:var(--reading-line)}
+.markdown h2,.markdown h3,.markdown h4{font-size:1.15em}.markdown table{font-size:inherit}.markdown code,.markdown pre{font-family:Consolas,monospace}
+.node .node-excerpt{font-size:var(--card-size);cursor:grab;max-height:none}.node h3{cursor:grab;user-select:none}.node:active,.node:active .node-excerpt,.node:active h3{cursor:grabbing}
+#splitter,#splitter:focus{background:#292929;outline:none}#splitter:hover,#splitter.dragging{background:#777}#splitter:focus-visible{background:#888;outline:1px solid #aaa;outline-offset:-1px}
+#target-label{font-size:11px;background:#292929;color:#bbb;padding:3px 9px;border:1px solid #424242;border-radius:12px;cursor:pointer}.target{margin:0 0 7px 8px}
+.answer-picker{position:relative;margin-left:auto}#answer-picker{background:transparent;border:0;color:#bbb;font-size:11px;padding:7px 9px}
+#answer-menu{position:absolute;bottom:calc(100% + 9px);right:0;min-width:180px;padding:5px;background:#292929;border:1px solid #444;border-radius:10px;box-shadow:0 8px 24px #0006;z-index:35}
+#answer-menu button{display:flex;justify-content:space-between;width:100%;padding:10px 12px;border:0;border-radius:7px;background:transparent;text-align:left}#answer-menu button:hover,#answer-menu button:focus-visible{background:#3b3b3b}#answer-menu [aria-checked=true]::after{content:'✓';margin-left:16px;color:#ddd}
+[hidden]{display:none!important}.review-off{opacity:.55}.review-off::after{content:' · 已关闭'}.reading-fields{display:grid;gap:14px}.reading-fields label{display:grid;gap:7px}.reading-sample{padding:14px;border:1px solid #444;border-radius:10px}#reading-dialog{width:min(480px,92vw)}
+#summary-dialog{width:min(650px,94vw)}#summary-dialog textarea{width:100%;font-size:14px;line-height:1.7}#summary-dialog label{display:block;margin:12px 0}#summary-keep{width:90px;margin-left:10px}.summary-help,#summary-status{font-size:12px;color:#aaa;line-height:1.7}.review-toggle{display:flex;gap:8px;align-items:center}
+
+#reading-dialog input[type=range]{accent-color:#bbb}
+.node .excerpt{touch-action:none}

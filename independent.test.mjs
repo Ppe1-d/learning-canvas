@@ -14,6 +14,22 @@ test('standalone without Codex: configure API, two stages, final-only context an
  let state;for(let i=0;i<100;i++){state=await api('state');if(state.nodes[0].status==='complete')break;await new Promise(r=>setTimeout(r,20));}
  assert.equal(state.nodes[0].answer,'FINAL_ONLY');assert.equal(calls.length,2);assert.equal(calls[0].tools,undefined);assert.equal(calls[1].tools,undefined);
  const next=await api('preview',{question:'next',mode:'main'});assert.equal(next.state.nodes[1].context.turns[0].answer,'FINAL_ONLY');assert.ok(!JSON.stringify(next.state.generation).includes('secret'));
+ // Direct generation and summary requests must not silently invoke review.
+ await api('generate',{id:next.nodeId,answerMode:'direct'});
+ for(let i=0;i<100;i++){state=await api('state');if(state.nodes[1].status==='complete')break;await new Promise(r=>setTimeout(r,20));}
+ assert.equal(calls.length,3);assert.equal(state.nodes[1].reviewed,false);assert.equal(state.nodes[1].draft,'');
+ const third=await api('preview',{question:'third',mode:'main'});await api('generate',{id:third.nodeId,answerMode:'direct'});
+ for(let i=0;i<100;i++){state=await api('state');if(state.nodes[2].status==='complete')break;await new Promise(r=>setTimeout(r,20));}
+ await api('summary-settings',{enabled:true,keepRecent:1});
+ const info=await api('summary-status',{mode:'main'});assert.equal(info.older,2);assert.equal(info.record,null);
+ const summary=await api('summary-generate',{mode:'main'});assert.equal(calls.length,5);assert.equal(summary.coveredIds.length,2);
+ assert.equal((await api('summary-status',{mode:'main'})).record,null,'preview must not apply itself');
+ await api('summary-save',{id:summary.id,text:'Edited progress and conclusions'});
+ const compact=await api('preview',{question:'after summary',mode:'main'}),node=compact.state.nodes.at(-1);
+ assert.equal(node.context.turns.length,3);assert.equal(node.requestContext.turns.length,1);assert.equal(node.requestContext.summary.text,'Edited progress and conclusions');
+ await api('generate',{id:compact.nodeId,answerMode:'direct'});
+ for(let i=0;i<100;i++){state=await api('state');if(state.nodes.at(-1).status==='complete')break;await new Promise(r=>setTimeout(r,20));}
+ assert.equal(calls.length,6);const sent=JSON.parse(calls.at(-1).messages[0].content.split('输入：')[1]);assert.equal(sent.context.turns.length,1);assert.equal(sent.context.summary.text,'Edited progress and conclusions');
  const course=await api('new-course',{title:'Independent'});assert.ok(course.threadId.startsWith('local-'));const fs=await import('node:fs/promises');extraPid=JSON.parse(await fs.readFile(path.join(dir,'threads',course.threadId+'.runtime.json'),'utf8')).pid;
  const other=new URL(course.url);const fresh=await (await fetch(other.origin+'/api/state',{headers:{'x-canvas-token':other.hash.slice(1)}})).json();assert.equal(fresh.title,'Independent');assert.equal(fresh.nodes.length,0);assert.equal(fresh.useCodex,false);
  }finally{if(extraPid)process.kill(extraPid);const exit=new Promise(r=>child.once('exit',r));child.kill();await exit;await new Promise(r=>provider.close(r));await rm(dir,{recursive:true,force:true});}

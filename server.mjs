@@ -1,3 +1,4 @@
+import {makeSummary,compactContext,summaryPrompt} from './summary.mjs';
 import {catalog,connections,saveConnection,requestText} from './connections.mjs';
 import {readdir} from 'node:fs/promises';
 import {defaultGeneration,resolveGeneration} from './generation.mjs';
@@ -30,7 +31,31 @@ const modelsFor=async(refresh=false)=>(await catalog(state.useCodex??!!process.e
 for(const n of state.nodes)if(["drafting","reviewing"].includes(n.status)){n.status=n.draft?"review_failed":"generation_failed";n.reviewError="服务重启中断了请求，可重新尝试。";}
 const persist=()=>saveState(db,state);
 const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
+function summaryContext(p){
+ const ids=p.mode==='main'?(state.mainHead?[state.mainHead]:[]):p.ids||[];
+ return contextFor(state,ids,p.mode==='combine'?'combine':'continue');
+}
 async function api(route,p){
+ if(route==='/api/summary-settings'){
+  const keepRecent=Number(p.keepRecent);if(!Number.isInteger(keepRecent)||keepRecent<1||keepRecent>50)throw Error('完整保留轮数应为 1–50');
+  state.summarySettings={...state.summarySettings,enabled:!!p.enabled,keepRecent};await persist();return state;
+ }
+ if(route==='/api/summary-status'){
+  const context=summaryContext(p),settings=state.summarySettings||{enabled:false,keepRecent:8},request=compactContext(context,{...settings,enabled:true,records:state.summaries||[]});
+  return {settings,total:context.turns.length,older:Math.max(0,context.turns.length-settings.keepRecent),record:request.summary||null};
+ }
+ if(route==='/api/summary-generate'){
+  const context=summaryContext(p),keep=state.summarySettings?.keepRecent??8,older=context.turns.slice(0,Math.max(0,context.turns.length-keep));
+  if(!older.length)throw Error('当前路径还没有需要总结的较早历史');
+  const models=await modelsFor(),config=resolveGeneration({...state.generation||defaultGeneration(models),reviewEnabled:false},models);
+  const text=await requestText(summaryPrompt+'\n学习问答：'+JSON.stringify(older),config.draft);if(!text.trim())throw Error('摘要为空');
+  const record={...makeSummary(older,text),model:config.draft.model};state.summaryDrafts??=[];state.summaryDrafts.push(record);await persist();return record;
+ }
+ if(route==='/api/summary-save'){
+  const source=[...(state.summaryDrafts||[]),...(state.summaries||[])].find(r=>r.id===p.id);if(!source)throw Error('摘要预览已不存在，请重新生成');
+  const text=String(p.text||'').trim();if(!text||text.length>30000)throw Error('摘要需为 1–30000 个字符');
+  const record={...source,text,updatedAt:new Date().toISOString()};state.summaries=[...(state.summaries||[]).filter(r=>r.id!==record.id),record];state.summaryDrafts=(state.summaryDrafts||[]).filter(r=>r.id!==record.id);await persist();return state;
+ }
  if(route==='/api/import-dsh'){const thread=parseDshExport(String(p.text||'')),id='local-'+randomUUID(),course={...structuredClone(defaults),useCodex:false};thread.name=String(p.title||thread.name).slice(0,80);importThread(course,thread);course.importSource='dsh-export';delete course.sourceThreadId;course.dshSessionId=thread.id;await saveState(path.join(dataDir,'threads',id+'.json'),course);return openThread(id);}
  if(route==='/api/connections'){await saveConnection(p);return {ok:true};}
  if(route==='/api/codex-toggle'){state.useCodex=!!p.enabled;await persist();return {ok:true};}
@@ -81,6 +106,7 @@ async function api(route,p){
   if(p.direction==='vertical'){node.x=parents[0]?.x??60;node.y=parents.length?Math.max(...parents.map(n=>n.y))+340:60;if(mode!=='main')node.x+=420;}
   else{node.x=parents.length?Math.max(...parents.map(n=>n.x))+440:60;node.y=parents[0]?.y??60;if(mode!=='main')node.y+=340;}
   while(state.nodes.some(n=>Math.abs(n.x-node.x)<350&&Math.abs(n.y-node.y)<270)){if(p.direction==='vertical')node.x+=420;else node.y+=340;}
+  node.requestContext=compactContext({...context,turns:context.turns.filter(t=>['complete','imported'].includes(state.nodes.find(x=>x.id===t.id)?.status))},{...state.summarySettings,records:state.summaries||[]});
   state.nodes.push(node);if(mode==='main')state.mainHead=node.id;await persist();return {state,nodeId:node.id};
  }
  if(route==='/api/generate'){
@@ -88,12 +114,12 @@ async function api(route,p){
   if(generating)throw Error('已有问题正在生成或审校，请等待完成');
   if(['complete','imported'].includes(n.status))throw Error('该节点已有最终稿，请创建新节点');
   if(state.nodes.some(child=>child.parents.includes(n.id)))throw Error('该预览已有后续节点，请新建提问，以免改变历史上下文');
-  const catalog=await modelsFor();const effective=resolveGeneration(n.generation||state.generation||defaultGeneration(catalog),catalog);
+  const catalog=await modelsFor();const effective=resolveGeneration(n.generation||{...(state.generation||defaultGeneration(catalog)),reviewEnabled:p.answerMode!=='direct'},catalog);
   n.generation=effective;n.generationStartedAt??=new Date().toISOString();
   const savedDraft=n.status==='review_failed'?n.draft:'';generating=true;n.status=savedDraft?'reviewing':'drafting';n.answer='';n.reviewError='';
   n.context.turns=n.context.turns.filter(t=>['complete','imported'].includes(state.nodes.find(x=>x.id===t.id)?.status));
   await persist();
-  void (async()=>{try{const result=await reviewAnswer({question:n.question,context:n.context},requestText,(stage,draft)=>{n.status=stage;if(draft)n.draft=draft;queue=queue.then(()=>persist());},savedDraft,n.generation);Object.assign(n,result);}catch(e){n.status='generation_failed';n.reviewError=e.message;}finally{generating=false;queue=queue.then(()=>persist());await queue;}})();
+  void (async()=>{try{const result=await reviewAnswer({question:n.question,context:n.requestContext||n.context},requestText,(stage,draft)=>{n.status=stage;if(draft)n.draft=draft;queue=queue.then(()=>persist());},savedDraft,n.generation);Object.assign(n,result);}catch(e){n.status='generation_failed';n.reviewError=e.message;}finally{generating=false;queue=queue.then(()=>persist());await queue;}})();
   return {ok:true};
  }
  if(route==='/api/layout-batch'){
@@ -138,4 +164,4 @@ const server=http.createServer(async(req,res)=>{
   res.end(await readFile(path.join(here,'public',file)));
  }catch(e){json(res,400,{error:e.message});}
 });
-server.listen(port,'127.0.0.1',async()=>{origin=`http://127.0.0.1:${server.address().port}`;const url=`${origin}/#${token}`;if(process.env.CANVAS_RUNTIME_FILE)await saveState(process.env.CANVAS_RUNTIME_FILE,{version:4,canvasId:process.env.CANVAS_ID,url,threadId:process.env.CANVAS_THREAD_ID,pid:process.pid});console.log(url);});
+server.listen(port,'127.0.0.1',async()=>{origin=`http://127.0.0.1:${server.address().port}`;const url=`${origin}/#${token}`;if(process.env.CANVAS_RUNTIME_FILE)await saveState(process.env.CANVAS_RUNTIME_FILE,{version:5,canvasId:process.env.CANVAS_ID,url,threadId:process.env.CANVAS_THREAD_ID,pid:process.pid});console.log(url);});

@@ -1,10 +1,12 @@
 {
   "name": "learning-canvas",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "AI-assisted local learning canvas with branching conversations",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node open-last.mjs",
     "test": "node --test --test-isolation=none *.test.mjs"

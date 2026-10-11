@@ -8,6 +8,7 @@ export function defaultGeneration(models=[]){const m=models.find(m=>m.isDefault)
 export function resolveGeneration(config,models){
  const result=structuredClone(config);
  for(const stage of ['draft','review']){
+  if(stage==='review'&&result.reviewEnabled===false)continue;
   const value=result?.[stage];if(!value)throw Error('缺少阶段设置');
   const id=stage==='review'&&value.model==='same'?result.draft.model:value.model;
   const model=models.find(m=>m.model===id);if(!model)throw Error('模型当前不可用，请刷新模型列表并重新选择');
